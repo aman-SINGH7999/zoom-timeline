@@ -1,0 +1,12 @@
+.app{
+  width: 70%;
+  align-items: center;
+  margin: 0 auto;
+  padding-top: 20px;
+}
+
+@media screen and (max-width: 600px) {
+  .app{
+    width: 90%;
+  }
+}

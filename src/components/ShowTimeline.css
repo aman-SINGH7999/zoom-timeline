@@ -1,0 +1,47 @@
+.show-dates{
+  display: flex;
+  overflow-x: auto;
+  padding: 15px;
+  border: 1px solid rgb(222, 222, 222);
+  border-radius: 5px;
+  white-space: nowrap;
+  width: 100%;
+}
+.timeline-date{
+  flex: 1;
+  min-width: 100px;
+  background: #f4f4f4;
+  border-radius: 5px;
+  box-shadow: 0 2px 4px rgba(0,0,0, 0.1);
+  cursor: ew-resize;
+}
+.date-time-label{
+  margin-bottom: 20px;
+  display: flex;
+  position: relative;
+}
+.date-label {
+  position: absolute;
+  font-size: 14px;
+  color: #333;
+  left: -15px;
+  text-align: center;
+}
+
+
+.time-label{
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.date-bar {
+  height: 50px;
+  background: linear-gradient(to bottom, #4caf50, #2e7d32);
+  border-right: 1px solid black;
+  display: flex;
+}
+
+.time-bar{
+  flex: 1;
+}

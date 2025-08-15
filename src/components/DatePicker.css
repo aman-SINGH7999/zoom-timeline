@@ -1,0 +1,24 @@
+.date-picker-container {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  width: fit-content;
+}
+
+.date-picker-container input[type="date"] {
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.date-picker-container input[type="date"]:focus {
+  border-color: #4a90e2;
+  box-shadow: 0 0 4px rgba(74,144,226,0.4);
+}
