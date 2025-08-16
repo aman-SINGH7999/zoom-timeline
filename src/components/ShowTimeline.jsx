@@ -1,86 +1,146 @@
 import React, {
+  useEffect,
   useRef,
   useState,
   useLayoutEffect,
-  useCallback,
-  useEffect,
-} from 'react';
-import './ShowTimeline.css';
+  useMemo,
+} from "react";
+import "./ShowTimeline.css";
 
 export default function ShowTimeline({ dateArray }) {
-  const [zoomLevel, setZoomLevel] = useState(100);
-  let colorList = ["#2E7D32", "#66BB6A", "#A5D6A7", "#9E9E9E", "#FFEB3B","#BDBDBD", "#FFF59D",]
+  const [zoom, setZoom] = useState(100); // width per date cell
+  const zoomRef = useRef(zoom);
   const containerRef = useRef(null);
+  const pendingRef = useRef(null);
 
-  // Refs to keep latest values without re-creating listeners
-  const zoomRef = useRef(zoomLevel);
+  // wheel gesture state
+  const gestureActiveRef = useRef(false);
+  const accumScaleRef = useRef(1);
+  const initialRef = useRef({ fraction: 0, mouseClientX: 0, baseZoom: 100 });
   const rafRef = useRef(null);
-  const pendingScrollRef = useRef(null); // { newZoom, focalPoint }
+  const wheelTimeoutRef = useRef(null);
 
-  // Sync ref with state
-  useLayoutEffect(() => {
-    zoomRef.current = zoomLevel;
-  }, [zoomLevel]);
+  let colorList = [
+    "#2E7D32",
+    "#66BB6A",
+    "#A5D6A7",
+    "#9E9E9E",
+    "#FFEB3B",
+    "#BDBDBD",
+    "#FFF59D",
+  ];
 
-  // Adjust scroll to keep focal point under mouse
-  const applyScrollCorrection = useCallback(() => {
-    const container = containerRef.current;
-    const pending = pendingScrollRef.current;
-    if (!container || !pending) return;
+  // keep zoomRef in sync
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
 
-    const { newZoom, focalPoint } = pending;
-    const oldZoom = zoomRef.current;
-    const scrollLeftBefore = container.scrollLeft;
-
-    // Scale scroll position so focal point stays fixed
-    const newScrollLeft =
-      (scrollLeftBefore + focalPoint) * (newZoom / oldZoom) - focalPoint;
-
-    // Clamp to valid scroll range
-    const maxScroll = container.scrollWidth - container.clientWidth;
-    container.scrollLeft = Math.max(0, Math.min(newScrollLeft, maxScroll));
-
-    pendingScrollRef.current = null; // Clear after use
-  }, []);
-
-  // Handle wheel zoom
-  useLayoutEffect(() => {
+  // ---------------- SMOOTH WHEEL ZOOM ----------------
+  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    const MAX_ZOOM = 12000;
+    const MIN_ZOOM = 100;
+
+    const scheduleRaf = () => {
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const base = initialRef.current.baseZoom || zoomRef.current;
+        let targetZoom = base * accumScaleRef.current;
+        targetZoom = Math.max(MIN_ZOOM, Math.min(targetZoom, MAX_ZOOM));
+
+        zoomRef.current = targetZoom;
+        setZoom(targetZoom);
+
+        pendingRef.current = {
+          fraction: initialRef.current.fraction,
+          mouseClientX: initialRef.current.mouseClientX,
+        };
+      });
+    };
+
+    const resetGesture = () => {
+      gestureActiveRef.current = false;
+      accumScaleRef.current = 1;
+      initialRef.current.baseZoom = zoomRef.current;
+      if (wheelTimeoutRef.current) {
+        clearTimeout(wheelTimeoutRef.current);
+        wheelTimeoutRef.current = null;
+      }
+    };
+
+    const handlePointerMove = (e) => {
+      if (!gestureActiveRef.current) return;
+      const rect = container.getBoundingClientRect();
+      const mouseClientX = e.clientX - rect.left;
+      const scrollWidth = Math.max(container.scrollWidth, 1);
+      const fraction = (container.scrollLeft + mouseClientX) / scrollWidth;
+      initialRef.current.fraction = fraction;
+      initialRef.current.mouseClientX = mouseClientX;
+    };
 
     const handleWheel = (e) => {
       e.preventDefault();
 
       const rect = container.getBoundingClientRect();
-      const focalPoint = e.clientX - rect.left; // mouse x inside container
+      const mouseClientX = e.clientX - rect.left;
+      const scrollWidth = Math.max(container.scrollWidth, 1);
+      const mouseAbsX = container.scrollLeft + mouseClientX;
 
-      // Use exponential scale for smooth zoom
-      const delta = e.deltaY;
-      const scaleFactor = Math.exp(-delta * 0.002); // smooth exponential factor
-      const oldZoom = zoomRef.current;
-      let newZoom = oldZoom * scaleFactor;
+      if (!gestureActiveRef.current) {
+        gestureActiveRef.current = true;
+        initialRef.current.fraction = mouseAbsX / scrollWidth;
+        initialRef.current.mouseClientX = mouseClientX;
+        initialRef.current.baseZoom = zoomRef.current;
+        accumScaleRef.current = 1;
+      }
 
-      // Clamp zoom
-      newZoom = Math.max(100, Math.min(newZoom, 12000));
+      const factor = Math.exp(-e.deltaY * 0.0025);
+      accumScaleRef.current *= factor;
 
-      // Schedule zoom update and scroll correction
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      scheduleRaf();
 
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        setZoomLevel(newZoom);
-        pendingScrollRef.current = { newZoom, focalPoint };
-        applyScrollCorrection();
-      });
+      if (wheelTimeoutRef.current) clearTimeout(wheelTimeoutRef.current);
+      wheelTimeoutRef.current = setTimeout(() => resetGesture(), 120);
     };
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    container.addEventListener("pointermove", handlePointerMove);
 
     return () => {
-      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener("wheel", handleWheel);
+      container.removeEventListener("pointermove", handlePointerMove);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (wheelTimeoutRef.current) clearTimeout(wheelTimeoutRef.current);
     };
-  }, [applyScrollCorrection]); // No zoomLevel dependency!
+  }, []);
+
+  // apply scroll correction after DOM updates
+  useLayoutEffect(() => {
+    if (!pendingRef.current) return;
+    const container = containerRef.current;
+    if (!container) {
+      pendingRef.current = null;
+      return;
+    }
+
+    const { fraction, mouseClientX } = pendingRef.current;
+    const scrollWidth = Math.max(container.scrollWidth, 1);
+    const desiredScrollLeft = fraction * scrollWidth - mouseClientX;
+
+    const maxScrollLeft = Math.max(
+      0,
+      container.scrollWidth - container.clientWidth
+    );
+    container.scrollLeft = Math.max(
+      0,
+      Math.min(desiredScrollLeft, maxScrollLeft)
+    );
+
+    pendingRef.current = null;
+  }, [zoom]);
 
   return (
     <div>
@@ -91,56 +151,60 @@ export default function ShowTimeline({ dateArray }) {
               key={index}
               className="timeline-date"
               style={{
-                minWidth: `${zoomLevel}px`,
-                // transition: 'width 0.1s ease-out',
-                // Avoid transition on min-width; use width if possible
-                transition: 'none', // better: animate width or use transform
+                minWidth: `${zoom}px`,
+                transition: "none",
               }}
             >
               <div className="date-time-label">
-                <div className="date-label" style={{left:`${ zoomLevel > 200 ? "-30px" : "-15px"}`}}>
-                  {zoomLevel > 200 && <div>00:00</div>}
-                  {date.day.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    ...(zoomLevel > 200 && { year: 'numeric' })
+                <div
+                  className="date-label"
+                  style={{
+                    left: `${zoom > 200 ? "-30px" : "-15px"}`,
+                  }}
+                >
+                  {zoom > 200 && <div>00:00</div>}
+                  {date.day.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    ...(zoom > 200 && { year: "numeric" }),
                   })}
                 </div>
                 <div className="time-label">
-                <div></div>
-                  {zoomLevel > 1200 && <div>01:00</div>}
-                  {zoomLevel > 1200 && <div>02:00</div>}
-                  {zoomLevel > 800 && <div>03:00</div>}
-                  {zoomLevel > 1200 && <div>04:00</div>}
-                  {zoomLevel > 1200 && <div>05:00</div>}
-                  {zoomLevel > 400 && <div>06:00</div>}
-                  {zoomLevel > 1200 && <div>07:00</div>}
-                  {zoomLevel > 1200 && <div>08:00</div>}
-                  {zoomLevel > 800 && <div>09:00</div>}
-                  {zoomLevel > 1200 && <div>10:00</div>}
-                  {zoomLevel > 1200 && <div>11:00</div>}
-                  {zoomLevel > 200 && <div>12:00</div>}
-                  {zoomLevel > 1200 && <div>13:00</div>}
-                  {zoomLevel > 1200 && <div>14:00</div>}
-                  {zoomLevel > 800 && <div>15:00</div>}
-                  {zoomLevel > 1200 && <div>16:00</div>}
-                  {zoomLevel > 1200 && <div>17:00</div>}
-                  {zoomLevel > 400 && <div>18:00</div>}
-                  {zoomLevel > 1200 && <div>19:00</div>}
-                  {zoomLevel > 1200 && <div>20:00</div>}
-                  {zoomLevel > 800 && <div>21:00</div>}
-                  {zoomLevel > 1200 && <div>22:00</div>}
-                  {zoomLevel > 1200 && <div>23:00</div>}
+                  <div></div>
+                  {zoom > 1200 && <div>01:00</div>}
+                  {zoom > 1200 && <div>02:00</div>}
+                  {zoom > 800 && <div>03:00</div>}
+                  {zoom > 1200 && <div>04:00</div>}
+                  {zoom > 1200 && <div>05:00</div>}
+                  {zoom > 400 && <div>06:00</div>}
+                  {zoom > 1200 && <div>07:00</div>}
+                  {zoom > 1200 && <div>08:00</div>}
+                  {zoom > 800 && <div>09:00</div>}
+                  {zoom > 1200 && <div>10:00</div>}
+                  {zoom > 1200 && <div>11:00</div>}
+                  {zoom > 200 && <div>12:00</div>}
+                  {zoom > 1200 && <div>13:00</div>}
+                  {zoom > 1200 && <div>14:00</div>}
+                  {zoom > 800 && <div>15:00</div>}
+                  {zoom > 1200 && <div>16:00</div>}
+                  {zoom > 1200 && <div>17:00</div>}
+                  {zoom > 400 && <div>18:00</div>}
+                  {zoom > 1200 && <div>19:00</div>}
+                  {zoom > 1200 && <div>20:00</div>}
+                  {zoom > 800 && <div>21:00</div>}
+                  {zoom > 1200 && <div>22:00</div>}
+                  {zoom > 1200 && <div>23:00</div>}
                   <div></div>
                 </div>
               </div>
               <div className="date-bar">
-                {
-                  date.time.map((t, i)=>{
-                    return <div className="time-bar" style={{backgroundColor:`${colorList[t]}`}}></div>
-                  })
-                }
-
+                {date.time.map((t, i) => (
+                  <div
+                    key={i}
+                    className="time-bar"
+                    style={{ backgroundColor: `${colorList[t]}` }}
+                  ></div>
+                ))}
               </div>
             </div>
           ))}

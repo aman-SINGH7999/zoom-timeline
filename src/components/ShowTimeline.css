@@ -1,4 +1,4 @@
-.show-dates{
+.show-dates {
   display: flex;
   overflow-x: auto;
   padding: 15px;
@@ -6,20 +6,25 @@
   border-radius: 5px;
   white-space: nowrap;
   width: 100%;
+  scroll-behavior: auto; /* avoid snapping */
 }
-.timeline-date{
+
+.timeline-date {
   flex: 1;
   min-width: 100px;
   background: #f4f4f4;
   border-radius: 5px;
-  box-shadow: 0 2px 4px rgba(0,0,0, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   cursor: ew-resize;
 }
-.date-time-label{
+
+.date-time-label {
   margin-bottom: 20px;
   display: flex;
   position: relative;
+  height: 25px;
 }
+
 .date-label {
   position: absolute;
   font-size: 14px;
@@ -28,8 +33,7 @@
   text-align: center;
 }
 
-
-.time-label{
+.time-label {
   display: flex;
   justify-content: space-between;
   width: 100%;
@@ -42,6 +46,6 @@
   display: flex;
 }
 
-.time-bar{
+.time-bar {
   flex: 1;
 }
